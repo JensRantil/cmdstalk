@@ -1,6 +1,6 @@
 /*
-	Package broker reserves jobs from beanstalkd, spawns worker processes,
-	and manages the interaction between the two.
+Package broker reserves jobs from beanstalkd, spawns worker processes,
+and manages the interaction between the two.
 */
 package broker
 
@@ -12,6 +12,7 @@ import (
 
 	"github.com/99designs/cmdstalk/bs"
 	"github.com/99designs/cmdstalk/cmd"
+	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 	"github.com/kr/beanstalk"
 )
 
@@ -43,6 +44,9 @@ type Broker struct {
 
 	log     *log.Logger
 	results chan<- *JobResult
+
+	// Circuit breaker for this broker. Can be nil if disabled.
+	breaker circuitbreaker.CircuitBreaker[any]
 }
 
 type JobResult struct {
@@ -71,13 +75,14 @@ type JobResult struct {
 }
 
 // New broker instance.
-func New(address, tube string, slot uint64, cmd string, results chan<- *JobResult) (b Broker) {
+func New(address, tube string, slot uint64, cmd string, results chan<- *JobResult, breaker circuitbreaker.CircuitBreaker[any]) (b Broker) {
 	b.Address = address
 	b.Tube = tube
 	b.Cmd = cmd
 
 	b.log = log.New(os.Stdout, fmt.Sprintf("[%s:%d] ", tube, slot), log.LstdFlags)
 	b.results = results
+	b.breaker = breaker
 	return
 }
 
@@ -99,6 +104,14 @@ func (b *Broker) Run(ticks chan bool) {
 			if _, ok := <-ticks; !ok {
 				break
 			}
+		}
+
+		// Check circuit breaker state before reserving
+		if b.breaker != nil && !b.breaker.TryAcquirePermit() {
+			remainingDelay := b.breaker.RemainingDelay()
+
+			b.log.Printf("circuit breaker is open, sleeping for %v", remainingDelay)
+			time.Sleep(remainingDelay)
 		}
 
 		b.log.Println("reserve (waiting for job)")
@@ -212,11 +225,28 @@ waitLoop:
 }
 
 func (b *Broker) handleResult(job bs.Job, result *JobResult) (err error) {
+	// Important to always set result on the circuit breaker on every exit path in this function. Otherwise, the circuit breaker permit will not be released.
+
 	if result.TimedOut {
 		b.log.Printf("job %d timed out", job.Id)
+
+		// A timed out job likely means something downstream is exhausted. As such, we should record a failure on the circuit breaker.
+		b.breaker.RecordFailure()
+
 		return
 	}
 	b.log.Printf("job %d finished with exit(%d)", job.Id, result.ExitStatus)
+
+	// Record circuit breaker results (only for executed jobs, not buried jobs)
+	if b.breaker != nil {
+		// Important to always return a result from the circuit breaker, even if the job was buried. Otherwise, the permit will not be released.
+		if result.Executed && result.ExitStatus == 0 {
+			b.breaker.RecordSuccess()
+		} else {
+			b.breaker.RecordFailure()
+		}
+	}
+
 	switch result.ExitStatus {
 	case 0:
 		b.log.Printf("deleting job %d", job.Id)
