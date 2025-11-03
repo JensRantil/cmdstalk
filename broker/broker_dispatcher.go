@@ -13,24 +13,29 @@ const (
 	ListTubeDelay = 10 * time.Second
 )
 
+// CircuitBreakerCreator is a function that creates a new circuit breaker instance.
+type CircuitBreakerCreator func() CircuitBreaker
+
 // BrokerDispatcher manages the running of Broker instances for tubes.  It can
 // be manually told tubes to start, or it can poll for tubes as they are
 // created. The `perTube` option determines how many brokers are started for
 // each tube.
 type BrokerDispatcher struct {
-	address string
-	cmd     string
-	conn    *beanstalk.Conn
-	perTube uint64
-	tubeSet map[string]bool
+	address        string
+	cmd            string
+	conn           *beanstalk.Conn
+	perTube        uint64
+	tubeSet        map[string]bool
+	breakerCreator CircuitBreakerCreator
 }
 
-func NewBrokerDispatcher(address, cmd string, perTube uint64) *BrokerDispatcher {
+func NewBrokerDispatcher(address, cmd string, perTube uint64, breakerCreator CircuitBreakerCreator) *BrokerDispatcher {
 	return &BrokerDispatcher{
-		address: address,
-		cmd:     cmd,
-		perTube: perTube,
-		tubeSet: make(map[string]bool),
+		address:        address,
+		cmd:            cmd,
+		perTube:        perTube,
+		tubeSet:        make(map[string]bool),
+		breakerCreator: breakerCreator,
 	}
 }
 
@@ -74,7 +79,7 @@ func (bd *BrokerDispatcher) RunAllTubes() (err error) {
 
 func (bd *BrokerDispatcher) runBroker(tube string, slot uint64) {
 	go func() {
-		b := New(bd.address, tube, slot, bd.cmd, nil, NewNoOpCircuitBreaker())
+		b := New(bd.address, tube, slot, bd.cmd, nil, bd.breakerCreator())
 		b.Run(nil)
 	}()
 }
