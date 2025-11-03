@@ -20,16 +20,54 @@ reduced down to basic unix concepts of exit status and signals.
 package main
 
 import (
+	"time"
+
 	"github.com/99designs/cmdstalk/broker"
 	"github.com/99designs/cmdstalk/cli"
+	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 )
+
+// failsafeCircuitBreakerAdapter wraps a failsafe-go circuit breaker to implement broker.CircuitBreaker.
+type failsafeCircuitBreakerAdapter struct {
+	cb circuitbreaker.CircuitBreaker[any]
+}
+
+func (a *failsafeCircuitBreakerAdapter) TryAcquirePermit() bool {
+	return a.cb.TryAcquirePermit()
+}
+
+func (a *failsafeCircuitBreakerAdapter) RemainingDelay() time.Duration {
+	return a.cb.RemainingDelay()
+}
+
+func (a *failsafeCircuitBreakerAdapter) RecordSuccess() {
+	a.cb.RecordSuccess()
+}
+
+func (a *failsafeCircuitBreakerAdapter) RecordFailure() {
+	a.cb.RecordFailure()
+}
 
 func main() {
 	opts := cli.MustParseFlags()
 
-	// Create a circuit breaker creator function that always returns a no-op circuit breaker.
-	breakerCreator := func() broker.CircuitBreaker {
-		return broker.NewNoOpCircuitBreaker()
+	// Create a circuit breaker creator function based on CLI options.
+	var breakerCreator broker.CircuitBreakerCreator
+	if opts.CircuitBreaker {
+		// Create a real circuit breaker using failsafe-go with configured parameters.
+		breakerCreator = func() broker.CircuitBreaker {
+			cb := circuitbreaker.NewBuilder[any]().
+				WithFailureThreshold(opts.CBFailureThreshold).
+				WithDelay(opts.CBDelay).
+				WithSuccessThreshold(opts.CBSuccessThreshold).
+				Build()
+			return &failsafeCircuitBreakerAdapter{cb: cb}
+		}
+	} else {
+		// Return a no-op circuit breaker when disabled.
+		breakerCreator = func() broker.CircuitBreaker {
+			return broker.NewNoOpCircuitBreaker()
+		}
 	}
 
 	bd := broker.NewBrokerDispatcher(opts.Address, opts.Cmd, opts.PerTube, breakerCreator)
