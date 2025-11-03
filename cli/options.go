@@ -1,5 +1,5 @@
 /*
-	Package cli provides command line support for cmdstalk.
+Package cli provides command line support for cmdstalk.
 */
 package cli
 
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 // Options contains runtime configuration, and is generally the result of
@@ -29,6 +30,18 @@ type Options struct {
 
 	// The beanstalkd tubes to watch.
 	Tubes TubeList
+
+	// CircuitBreaker enables circuit breaker functionality.
+	CircuitBreaker bool
+
+	// CBFailureThreshold is the number of failures before opening the circuit breaker (default: 1).
+	CBFailureThreshold uint
+
+	// CBDelay is the delay when the circuit breaker is open (default: 1 minute).
+	CBDelay time.Duration
+
+	// CBSuccessThreshold is the number of successes needed to close the circuit breaker (default: 1).
+	CBSuccessThreshold uint
 }
 
 // TubeList is a list of beanstalkd tube names.
@@ -55,6 +68,10 @@ func ParseFlags() (o Options, err error) {
 	flag.StringVar(&o.Cmd, "cmd", "", "Command to run in worker.")
 	flag.Uint64Var(&o.PerTube, "per-tube", 1, "Number of workers per tube.")
 	flag.Var(&o.Tubes, "tubes", "Comma separated list of tubes.")
+	flag.BoolVar(&o.CircuitBreaker, "circuit-breaker", false, "Enable circuit breaker functionality.")
+	flag.UintVar(&o.CBFailureThreshold, "cb-failure-threshold", 1, "Number of failures before opening the circuit breaker.")
+	flag.DurationVar(&o.CBDelay, "cb-delay", time.Minute, "Delay when the circuit breaker is open.")
+	flag.UintVar(&o.CBSuccessThreshold, "cb-success-threshold", 1, "Number of successes needed to close the circuit breaker.")
 	flag.Parse()
 
 	err = validateOptions(o)
