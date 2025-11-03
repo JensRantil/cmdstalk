@@ -48,6 +48,31 @@ type CircuitBreaker interface {
 	RecordFailure()
 }
 
+// noOpCircuitBreaker is a no-op implementation of CircuitBreaker that does nothing.
+// It always allows execution and records nothing.
+type noOpCircuitBreaker struct{}
+
+func (n *noOpCircuitBreaker) TryAcquirePermit() bool {
+	return true
+}
+
+func (n *noOpCircuitBreaker) RemainingDelay() time.Duration {
+	return 0
+}
+
+func (n *noOpCircuitBreaker) RecordSuccess() {
+	// No-op
+}
+
+func (n *noOpCircuitBreaker) RecordFailure() {
+	// No-op
+}
+
+// NewNoOpCircuitBreaker returns a no-op circuit breaker that does nothing.
+func NewNoOpCircuitBreaker() CircuitBreaker {
+	return &noOpCircuitBreaker{}
+}
+
 type Broker struct {
 
 	// Address of the beanstalkd server.
@@ -62,7 +87,7 @@ type Broker struct {
 	log     *log.Logger
 	results chan<- *JobResult
 
-	// Circuit breaker for this broker. Can be nil if disabled.
+	// Circuit breaker for this broker.
 	breaker CircuitBreaker
 }
 
@@ -121,7 +146,7 @@ func (b *Broker) Run(ticks chan bool) {
 		}
 
 		// Check circuit breaker state before reserving
-		if b.breaker != nil && !b.breaker.TryAcquirePermit() {
+		if !b.breaker.TryAcquirePermit() {
 			remainingDelay := b.breaker.RemainingDelay()
 
 			b.log.Printf("circuit breaker is open, sleeping for %v", remainingDelay)
@@ -252,13 +277,10 @@ func (b *Broker) handleResult(job bs.Job, result *JobResult) (err error) {
 	b.log.Printf("job %d finished with exit(%d)", job.Id, result.ExitStatus)
 
 	// Record circuit breaker results (only for executed jobs, not buried jobs)
-	if b.breaker != nil {
-		// Important to always return a result from the circuit breaker, even if the job was buried. Otherwise, the permit will not be released.
-		if result.ExitStatus == 0 {
-			b.breaker.RecordSuccess()
-		} else {
-			b.breaker.RecordFailure()
-		}
+	if result.ExitStatus == 0 {
+		b.breaker.RecordSuccess()
+	} else {
+		b.breaker.RecordFailure()
 	}
 
 	switch result.ExitStatus {

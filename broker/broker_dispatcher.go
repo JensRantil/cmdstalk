@@ -74,7 +74,7 @@ func (bd *BrokerDispatcher) RunAllTubes() (err error) {
 
 func (bd *BrokerDispatcher) runBroker(tube string, slot uint64) {
 	go func() {
-		b := New(bd.address, tube, slot, bd.cmd, nil, nil)
+		b := New(bd.address, tube, slot, bd.cmd, nil, NewNoOpCircuitBreaker())
 		b.Run(nil)
 	}()
 }
