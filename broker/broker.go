@@ -12,7 +12,6 @@ import (
 
 	"github.com/99designs/cmdstalk/bs"
 	"github.com/99designs/cmdstalk/cmd"
-	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 	"github.com/kr/beanstalk"
 )
 
@@ -31,6 +30,24 @@ const (
 	ReleaseTries = 10
 )
 
+// CircuitBreaker is a minimal interface for circuit breaker functionality.
+// It provides methods to check state, acquire permits, and record results.
+type CircuitBreaker interface {
+	// TryAcquirePermit attempts to acquire a permit to use the circuit breaker.
+	// Returns false if the circuit breaker is open and execution should be blocked.
+	TryAcquirePermit() bool
+
+	// RemainingDelay returns the remaining delay until the circuit allows another execution.
+	// Returns 0 when the circuit is not in an open state.
+	RemainingDelay() time.Duration
+
+	// RecordSuccess records a successful execution.
+	RecordSuccess()
+
+	// RecordFailure records a failed execution.
+	RecordFailure()
+}
+
 type Broker struct {
 
 	// Address of the beanstalkd server.
@@ -46,7 +63,7 @@ type Broker struct {
 	results chan<- *JobResult
 
 	// Circuit breaker for this broker. Can be nil if disabled.
-	breaker circuitbreaker.CircuitBreaker[any]
+	breaker CircuitBreaker
 }
 
 type JobResult struct {
@@ -72,7 +89,7 @@ type JobResult struct {
 }
 
 // New broker instance.
-func New(address, tube string, slot uint64, cmd string, results chan<- *JobResult, breaker circuitbreaker.CircuitBreaker[any]) (b Broker) {
+func New(address, tube string, slot uint64, cmd string, results chan<- *JobResult, breaker CircuitBreaker) (b Broker) {
 	b.Address = address
 	b.Tube = tube
 	b.Cmd = cmd
