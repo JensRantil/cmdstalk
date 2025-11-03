@@ -54,9 +54,6 @@ type JobResult struct {
 	// Buried is true if the job was buried.
 	Buried bool
 
-	// Executed is true if the job command was executed (or attempted).
-	Executed bool
-
 	// ExitStatus of the command; 0 for success.
 	ExitStatus int
 
@@ -168,7 +165,7 @@ func (b *Broker) Run(ticks chan bool) {
 }
 
 func (b *Broker) executeJob(job bs.Job, shellCmd string) (result *JobResult, err error) {
-	result = &JobResult{JobId: job.Id, Executed: true}
+	result = &JobResult{JobId: job.Id}
 
 	ttr, err := job.TimeLeft()
 	timer := time.NewTimer(ttr + ttrMargin)
@@ -240,7 +237,7 @@ func (b *Broker) handleResult(job bs.Job, result *JobResult) (err error) {
 	// Record circuit breaker results (only for executed jobs, not buried jobs)
 	if b.breaker != nil {
 		// Important to always return a result from the circuit breaker, even if the job was buried. Otherwise, the permit will not be released.
-		if result.Executed && result.ExitStatus == 0 {
+		if result.ExitStatus == 0 {
 			b.breaker.RecordSuccess()
 		} else {
 			b.breaker.RecordFailure()
