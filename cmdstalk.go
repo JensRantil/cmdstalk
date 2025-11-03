@@ -20,33 +20,10 @@ reduced down to basic unix concepts of exit status and signals.
 package main
 
 import (
-	"time"
-
 	"github.com/99designs/cmdstalk/broker"
 	"github.com/99designs/cmdstalk/cli"
 	"github.com/failsafe-go/failsafe-go/circuitbreaker"
 )
-
-// failsafeCircuitBreakerAdapter wraps a failsafe-go circuit breaker to implement broker.CircuitBreaker.
-type failsafeCircuitBreakerAdapter struct {
-	cb circuitbreaker.CircuitBreaker[any]
-}
-
-func (a *failsafeCircuitBreakerAdapter) TryAcquirePermit() bool {
-	return a.cb.TryAcquirePermit()
-}
-
-func (a *failsafeCircuitBreakerAdapter) RemainingDelay() time.Duration {
-	return a.cb.RemainingDelay()
-}
-
-func (a *failsafeCircuitBreakerAdapter) RecordSuccess() {
-	a.cb.RecordSuccess()
-}
-
-func (a *failsafeCircuitBreakerAdapter) RecordFailure() {
-	a.cb.RecordFailure()
-}
 
 func main() {
 	opts := cli.MustParseFlags()
@@ -61,7 +38,7 @@ func main() {
 				WithDelay(opts.CBDelay).
 				WithSuccessThreshold(opts.CBSuccessThreshold).
 				Build()
-			return &failsafeCircuitBreakerAdapter{cb: cb}
+			return cb
 		}
 	} else {
 		// Return a no-op circuit breaker when disabled.
