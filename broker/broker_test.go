@@ -28,7 +28,11 @@ func TestWorkerSuccess(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel the context to stop the broker
 
-	b := New(ctx, address, tube, 0, cmd, results)
+	jobReceived := make(chan struct{})
+	defer close(jobReceived)
+	go devNull(jobReceived)
+
+	b := New(ctx, address, tube, 0, cmd, results, jobReceived)
 
 	ticks := make(chan bool)
 	defer close(ticks)
@@ -57,10 +61,14 @@ func TestWorkerFailure(t *testing.T) {
 	cmd := "false"
 	results := make(chan *JobResult)
 
+	jobReceived := make(chan struct{})
+	defer close(jobReceived)
+	go devNull(jobReceived)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel the context to stop the broker
 
-	b := New(ctx, address, tube, 0, cmd, results)
+	b := New(ctx, address, tube, 0, cmd, results, jobReceived)
 
 	ticks := make(chan bool)
 	defer close(ticks)
@@ -82,6 +90,12 @@ func TestWorkerFailure(t *testing.T) {
 	assertJobStat(t, id, "pri", "10")
 }
 
+func devNull(jobReceived chan struct{}) {
+	for range jobReceived {
+		// do nothing
+	}
+}
+
 func TestWorkerTimeout(t *testing.T) {
 	ttr := 1 * time.Second
 	tube, id := queueJob("TestWorkerTimeout", 10, ttr)
@@ -89,10 +103,14 @@ func TestWorkerTimeout(t *testing.T) {
 	cmd := "sleep 4"
 	results := make(chan *JobResult)
 
+	jobReceived := make(chan struct{})
+	defer close(jobReceived)
+	go devNull(jobReceived)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // cancel the context to stop the broker
 
-	b := New(ctx, address, tube, 0, cmd, results)
+	b := New(ctx, address, tube, 0, cmd, results, jobReceived)
 
 	ticks := make(chan bool)
 	defer close(ticks)
