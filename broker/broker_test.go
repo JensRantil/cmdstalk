@@ -24,7 +24,11 @@ func TestWorkerSuccess(t *testing.T) {
 
 	cmd := "tr [a-z] [A-Z]"
 	results := make(chan *JobResult)
-	b := New(context.Background(), address, tube, 0, cmd, results)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // cancel the context to stop the broker
+
+	b := New(ctx, address, tube, 0, cmd, results)
 
 	ticks := make(chan bool)
 	defer close(ticks)
@@ -52,7 +56,11 @@ func TestWorkerFailure(t *testing.T) {
 
 	cmd := "false"
 	results := make(chan *JobResult)
-	b := New(context.Background(), address, tube, 0, cmd, results)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // cancel the context to stop the broker
+
+	b := New(ctx, address, tube, 0, cmd, results)
 
 	ticks := make(chan bool)
 	defer close(ticks)
@@ -80,7 +88,11 @@ func TestWorkerTimeout(t *testing.T) {
 
 	cmd := "sleep 4"
 	results := make(chan *JobResult)
-	b := New(context.Background(), address, tube, 0, cmd, results)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // cancel the context to stop the broker
+
+	b := New(ctx, address, tube, 0, cmd, results)
 
 	ticks := make(chan bool)
 	defer close(ticks)
